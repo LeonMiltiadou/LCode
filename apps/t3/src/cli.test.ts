@@ -90,6 +90,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for empty equals-style backend port values", () => {
+    expect(() => parseCliOptions(["--backend-port="], {}, "/workspace")).toThrow(
+      "Invalid value for --backend-port",
+    );
+  });
+
   it("throws when backend port value is missing", () => {
     expect(() => parseCliOptions(["--backend-port"], {}, "/workspace")).toThrow(
       "Missing value for --backend-port",
