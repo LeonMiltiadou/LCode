@@ -419,6 +419,17 @@ async function main() {
         `Smoke test failed: expected wildcard If-Match status 200, received ${ifMatchWildcardAsset.status}.`,
       );
     }
+    const ifMatchWildcardRangedAsset = await fetch(assetUrl, {
+      headers: {
+        Range: "bytes=0-15",
+        "If-Match": "*",
+      },
+    });
+    if (ifMatchWildcardRangedAsset.status !== 206) {
+      throw new Error(
+        `Smoke test failed: expected wildcard If-Match ranged status 206, received ${ifMatchWildcardRangedAsset.status}.`,
+      );
+    }
     if (ifMatchMismatchAsset.headers.get("etag") !== assetEtag) {
       throw new Error("Smoke test failed: expected ETag on If-Match mismatch response.");
     }
