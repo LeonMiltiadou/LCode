@@ -645,6 +645,16 @@ async function main() {
         "Smoke test failed: expected cache-control=no-store on HEAD stale If-Unmodified-Since response.",
       );
     }
+    if (ifUnmodifiedSinceStaleHeadAsset.headers.get("etag") !== assetEtag) {
+      throw new Error(
+        "Smoke test failed: expected ETag on HEAD stale If-Unmodified-Since response.",
+      );
+    }
+    if (ifUnmodifiedSinceStaleHeadAsset.headers.get("last-modified") !== assetLastModified) {
+      throw new Error(
+        "Smoke test failed: expected Last-Modified on HEAD stale If-Unmodified-Since response.",
+      );
+    }
     const ifMatchRangeMismatchHeadAsset = await fetch(assetUrl, {
       method: "HEAD",
       headers: {
