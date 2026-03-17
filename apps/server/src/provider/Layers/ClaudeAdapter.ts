@@ -51,6 +51,51 @@ import { ClaudeAdapter, type ClaudeAdapterShape } from "../Services/ClaudeAdapte
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = "claudeAgent" as const;
+
+// ---------------------------------------------------------------------------
+// Claude Monitor integration
+// ---------------------------------------------------------------------------
+
+type MonitorEventName =
+  | "SessionStart"
+  | "SessionEnd"
+  | "PreToolUse"
+  | "PostToolUse"
+  | "SubagentStart"
+  | "SubagentStop"
+  | "Stop";
+
+interface MonitorPayload {
+  hook_event_name: MonitorEventName;
+  session_id: string;
+  tool_name?: string;
+  tool_input?: Record<string, unknown>;
+  tool_response?: unknown;
+  agent_id?: string;
+  agent_type?: string;
+  model?: string;
+  cwd?: string;
+}
+
+const CLAUDE_MONITOR_URL = process.env.CLAUDE_MONITOR_URL ?? "";
+
+/**
+ * Fire-and-forget POST to the Claude Monitor.
+ * Returns void synchronously — never blocks the caller.
+ * Exported for testing.
+ */
+export function sendMonitorEvent(payload: MonitorPayload): void {
+  if (!CLAUDE_MONITOR_URL) {
+    return;
+  }
+  fetch(CLAUDE_MONITOR_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {
+    /* intentionally swallowed */
+  });
+}
 type ClaudeTextStreamKind = Extract<RuntimeContentStreamKind, "assistant_text" | "reasoning_text">;
 type ClaudeToolResultStreamKind = Extract<
   RuntimeContentStreamKind,
@@ -1330,6 +1375,16 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               payload: message,
             },
           });
+
+          sendMonitorEvent({
+            hook_event_name: "PreToolUse",
+            session_id: context.session.threadId,
+            tool_name: toolName,
+            tool_input: toolInput,
+            ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+            ...(context.session.model ? { model: context.session.model } : {}),
+          });
+
           return;
         }
 
@@ -1452,6 +1507,16 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             },
           });
 
+          sendMonitorEvent({
+            hook_event_name: "PostToolUse",
+            session_id: context.session.threadId,
+            tool_name: tool.toolName,
+            tool_input: tool.input,
+            tool_response: toolResult.block,
+            ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+            ...(context.session.model ? { model: context.session.model } : {}),
+          });
+
           context.inFlightTools.delete(index);
         }
       });
@@ -1491,6 +1556,13 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         }
 
         yield* completeTurn(context, status, errorMessage, message);
+
+        sendMonitorEvent({
+          hook_event_name: "Stop",
+          session_id: context.session.threadId,
+          ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+          ...(context.session.model ? { model: context.session.model } : {}),
+        });
       });
 
     const handleSystemMessage = (
@@ -1596,6 +1668,14 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                 ...(message.task_type ? { taskType: message.task_type } : {}),
               },
             });
+            sendMonitorEvent({
+              hook_event_name: "SubagentStart",
+              session_id: context.session.threadId,
+              agent_id: message.task_id,
+              ...(message.task_type ? { agent_type: message.task_type } : {}),
+              ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+              ...(context.session.model ? { model: context.session.model } : {}),
+            });
             return;
           case "task_progress":
             yield* offerRuntimeEvent({
@@ -1619,6 +1699,13 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                 ...(message.summary ? { summary: message.summary } : {}),
                 ...(message.usage ? { usage: message.usage } : {}),
               },
+            });
+            sendMonitorEvent({
+              hook_event_name: "SubagentStop",
+              session_id: context.session.threadId,
+              agent_id: message.task_id,
+              ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+              ...(context.session.model ? { model: context.session.model } : {}),
             });
             return;
           case "files_persisted":
@@ -1841,6 +1928,13 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               exitKind: "graceful",
             },
             providerRefs: {},
+          });
+
+          sendMonitorEvent({
+            hook_event_name: "SessionEnd",
+            session_id: context.session.threadId,
+            ...(context.session.cwd ? { cwd: context.session.cwd } : {}),
+            ...(context.session.model ? { model: context.session.model } : {}),
           });
         }
 
@@ -2226,6 +2320,13 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           threadId,
           payload: input.resumeCursor !== undefined ? { resume: input.resumeCursor } : {},
           providerRefs: {},
+        });
+
+        sendMonitorEvent({
+          hook_event_name: "SessionStart",
+          session_id: threadId,
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.cwd ? { cwd: input.cwd } : {}),
         });
 
         const configuredStamp = yield* makeEventStamp();

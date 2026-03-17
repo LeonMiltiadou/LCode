@@ -33,6 +33,7 @@ import { GitManagerLive } from "./git/Layers/GitManager";
 import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitHubCliLive } from "./git/Layers/GitHubCli";
 import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
+import { ClaudeTextGenerationLive } from "./git/Layers/ClaudeTextGeneration";
 import { GitServiceLive } from "./git/Layers/GitService";
 import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
 import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
@@ -75,7 +76,12 @@ export function makeServerProviderLayer(): Layer.Layer<
 
 export function makeServerRuntimeServicesLayer() {
   const gitCoreLayer = GitCoreLive.pipe(Layer.provideMerge(GitServiceLive));
-  const textGenerationLayer = CodexTextGenerationLive;
+  // Use Claude CLI for text generation (commit messages, PR content, branch names).
+  // Falls back to Codex if LCODE_TEXT_GEN_PROVIDER=codex is set.
+  const textGenerationLayer =
+    process.env.LCODE_TEXT_GEN_PROVIDER === "codex"
+      ? CodexTextGenerationLive
+      : ClaudeTextGenerationLive;
 
   const orchestrationLayer = OrchestrationEngineLive.pipe(
     Layer.provide(OrchestrationProjectionPipelineLive),
