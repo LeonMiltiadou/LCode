@@ -46,6 +46,7 @@ import type {
   OrchestrationReadModel,
 } from "./orchestration";
 import { EditorId } from "./editor";
+import type { LogEntry } from "./log";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -169,5 +170,9 @@ export interface NativeApi {
     ) => Promise<OrchestrationGetFullThreadDiffResult>;
     replayEvents: (fromSequenceExclusive: number) => Promise<OrchestrationEvent[]>;
     onDomainEvent: (callback: (event: OrchestrationEvent) => void) => () => void;
+  };
+  logs: {
+    getRecentLogs: () => Promise<LogEntry[]>;
+    onLogEvent: (callback: (entry: LogEntry) => void) => () => void;
   };
 }
