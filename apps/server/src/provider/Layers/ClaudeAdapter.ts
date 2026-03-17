@@ -1979,11 +1979,32 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         const threadId = input.threadId;
 
         const promptQueue = yield* Queue.unbounded<PromptQueueItem>();
-        const prompt = Stream.fromQueue(promptQueue).pipe(
-          Stream.filter((item) => item.type === "message"),
-          Stream.map((item) => item.message),
-          Stream.toAsyncIterable,
-        );
+
+        // Build a plain AsyncIterable that pulls from the prompt queue
+        // without relying on Effect fiber scopes. Using Stream.toAsyncIterable
+        // previously caused "All fibers interrupted without error" because the
+        // backing fibers were tied to the startSession scope which ends before
+        // the SDK finishes consuming the iterable.
+        const prompt: AsyncIterable<SDKUserMessage> = {
+          [Symbol.asyncIterator]() {
+            return {
+              async next(): Promise<IteratorResult<SDKUserMessage>> {
+                for (;;) {
+                  try {
+                    const item = await Effect.runPromise(Queue.take(promptQueue));
+                    if (item.type === "terminate") {
+                      return { done: true, value: undefined };
+                    }
+                    return { done: false, value: item.message };
+                  } catch {
+                    // Queue was shut down — signal end of iteration
+                    return { done: true, value: undefined };
+                  }
+                }
+              },
+            };
+          },
+        };
 
         const pendingApprovals = new Map<ApprovalRequestId, PendingApproval>();
         const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
