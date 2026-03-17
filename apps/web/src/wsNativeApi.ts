@@ -175,6 +175,11 @@ export function createWsNativeApi(): NativeApi {
           callback(message.data),
         ),
     },
+    logs: {
+      getRecentLogs: () => transport.request(WS_METHODS.serverGetLogs),
+      onLogEvent: (callback) =>
+        transport.subscribe(WS_CHANNELS.logEvent, (message) => callback(message.data)),
+    },
   };
 
   instance = { api, transport };

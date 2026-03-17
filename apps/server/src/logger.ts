@@ -1,4 +1,5 @@
 import util from "node:util";
+import type { LogEntry } from "@t3tools/contracts";
 
 type LogLevel = "info" | "warn" | "error" | "event";
 
@@ -67,6 +68,66 @@ function formatContext(context: LogContext | undefined) {
   return entries.map(([key, value]) => `${key}=${formatValue(value)}`).join(" ");
 }
 
+// ── Log Ring Buffer ──────────────────────────────────────────────────
+
+const LOG_BUFFER_MAX_SIZE = 1000;
+let logIdCounter = 0;
+const logBuffer: LogEntry[] = [];
+let logBroadcast: ((entry: LogEntry) => void) | null = null;
+
+/**
+ * Set a broadcast function that will be called for every new log entry.
+ * Used by the server to push log events to connected WebSocket clients.
+ */
+export function setLogBroadcast(fn: (entry: LogEntry) => void) {
+  logBroadcast = fn;
+}
+
+/**
+ * Get recent log entries from the ring buffer.
+ */
+export function getRecentLogs(): LogEntry[] {
+  return [...logBuffer];
+}
+
+function bufferLogEntry(level: LogLevel, scope: string, message: string, context?: LogContext) {
+  const entry: LogEntry = {
+    id: ++logIdCounter,
+    timestamp: new Date().toISOString(),
+    level,
+    scope,
+    message,
+    ...(context && Object.keys(context).length > 0
+      ? {
+          context: Object.fromEntries(
+            Object.entries(context)
+              .filter(([, v]) => v !== undefined)
+              .map(([k, v]) => [k, serializeContextValue(v)]),
+          ),
+        }
+      : {}),
+  };
+
+  logBuffer.push(entry);
+  if (logBuffer.length > LOG_BUFFER_MAX_SIZE) {
+    logBuffer.shift();
+  }
+
+  logBroadcast?.(entry);
+}
+
+function serializeContextValue(value: unknown): unknown {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
+    return value;
+  }
+  return formatValue(value);
+}
+
 function write(level: LogLevel, scope: string, message: string, context?: LogContext) {
   const colorEnabled = useColors();
   const ts = colorize(timeStamp(), ANSI.dim, colorEnabled);
@@ -76,13 +137,14 @@ function write(level: LogLevel, scope: string, message: string, context?: LogCon
 
   if (level === "warn") {
     console.warn(line);
-    return;
-  }
-  if (level === "error") {
+  } else if (level === "error") {
     console.error(line);
-    return;
+  } else {
+    console.log(line);
   }
-  console.log(line);
+
+  // Buffer and broadcast the entry
+  bufferLogEntry(level, scope, message, context);
 }
 
 export function createLogger(scope: string) {

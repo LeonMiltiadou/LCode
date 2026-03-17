@@ -45,7 +45,7 @@ import {
 } from "effect";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import { createLogger } from "./logger";
+import { createLogger, getRecentLogs, setLogBroadcast } from "./logger";
 import { GitManager } from "./git/Services/GitManager.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { Keybindings } from "./keybindings";
@@ -288,6 +288,11 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     clients,
     logOutgoingPush,
   });
+  // Wire up log broadcasting to all connected clients
+  setLogBroadcast((entry) => {
+    void Effect.runPromise(pushBus.publishAll(WS_CHANNELS.logEvent, entry));
+  });
+
   yield* readiness.markPushBusReady;
   yield* keybindingsManager.start.pipe(
     Effect.mapError(
@@ -882,6 +887,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         const keybindingsConfig = yield* keybindingsManager.upsertKeybindingRule(body);
         return { keybindings: keybindingsConfig, issues: [] };
       }
+
+      case WS_METHODS.serverGetLogs:
+        return getRecentLogs();
 
       default: {
         const _exhaustiveCheck: never = request.body;
