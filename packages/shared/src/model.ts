@@ -1,16 +1,17 @@
 import {
   CODEX_REASONING_EFFORT_OPTIONS,
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_REASONING_EFFORT_BY_PROVIDER,
   MODEL_OPTIONS_BY_PROVIDER,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
+  REASONING_EFFORT_OPTIONS_BY_PROVIDER,
   type CodexReasoningEffort,
   type ModelSlug,
   type ProviderKind,
 } from "@t3tools/contracts";
 
-type CatalogProvider = keyof typeof MODEL_OPTIONS_BY_PROVIDER;
-
-const MODEL_SLUG_SET_BY_PROVIDER: Record<CatalogProvider, ReadonlySet<ModelSlug>> = {
+const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
+  claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
 };
 
@@ -36,7 +37,9 @@ export function normalizeModelSlug(
   }
 
   const aliases = MODEL_SLUG_ALIASES_BY_PROVIDER[provider] as Record<string, ModelSlug>;
-  const aliased = aliases[trimmed];
+  const aliased = Object.prototype.hasOwnProperty.call(aliases, trimmed)
+    ? aliases[trimmed]
+    : undefined;
   return typeof aliased === "string" ? aliased : (trimmed as ModelSlug);
 }
 
@@ -46,12 +49,12 @@ export function resolveModelSlug(
 ): ModelSlug {
   const normalized = normalizeModelSlug(model, provider);
   if (!normalized) {
-    return getDefaultModel(provider);
+    return DEFAULT_MODEL_BY_PROVIDER[provider];
   }
 
   return MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized)
     ? normalized
-    : getDefaultModel(provider);
+    : DEFAULT_MODEL_BY_PROVIDER[provider];
 }
 
 export function resolveModelSlugForProvider(
@@ -61,10 +64,27 @@ export function resolveModelSlugForProvider(
   return resolveModelSlug(model, provider);
 }
 
+export function inferProviderForModel(
+  model: string | null | undefined,
+  fallback: ProviderKind = "codex",
+): ProviderKind {
+  const normalizedClaude = normalizeModelSlug(model, "claudeAgent");
+  if (normalizedClaude && MODEL_SLUG_SET_BY_PROVIDER.claudeAgent.has(normalizedClaude)) {
+    return "claudeAgent";
+  }
+
+  const normalizedCodex = normalizeModelSlug(model, "codex");
+  if (normalizedCodex && MODEL_SLUG_SET_BY_PROVIDER.codex.has(normalizedCodex)) {
+    return "codex";
+  }
+
+  return typeof model === "string" && model.trim().startsWith("claude-") ? "claudeAgent" : fallback;
+}
+
 export function getReasoningEffortOptions(
   provider: ProviderKind = "codex",
 ): ReadonlyArray<CodexReasoningEffort> {
-  return provider === "codex" ? CODEX_REASONING_EFFORT_OPTIONS : [];
+  return REASONING_EFFORT_OPTIONS_BY_PROVIDER[provider];
 }
 
 export function getDefaultReasoningEffort(provider: "codex"): CodexReasoningEffort;
@@ -72,7 +92,7 @@ export function getDefaultReasoningEffort(provider: ProviderKind): CodexReasonin
 export function getDefaultReasoningEffort(
   provider: ProviderKind = "codex",
 ): CodexReasoningEffort | null {
-  return provider === "codex" ? "high" : null;
+  return DEFAULT_REASONING_EFFORT_BY_PROVIDER[provider];
 }
 
 export { CODEX_REASONING_EFFORT_OPTIONS };

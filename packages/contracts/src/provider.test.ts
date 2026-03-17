@@ -42,6 +42,28 @@ describe("ProviderSessionStartInput", () => {
       }),
     ).toThrow();
   });
+
+  it("accepts claude runtime knobs", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "claudeAgent",
+      cwd: "/tmp/workspace",
+      model: "claude-sonnet-4-6",
+      providerOptions: {
+        claudeAgent: {
+          binaryPath: "/usr/local/bin/claude",
+          permissionMode: "plan",
+          maxThinkingTokens: 12_000,
+        },
+      },
+      runtimeMode: "full-access",
+    });
+    expect(parsed.provider).toBe("claudeAgent");
+    expect(parsed.providerOptions?.claudeAgent?.binaryPath).toBe("/usr/local/bin/claude");
+    expect(parsed.providerOptions?.claudeAgent?.permissionMode).toBe("plan");
+    expect(parsed.providerOptions?.claudeAgent?.maxThinkingTokens).toBe(12_000);
+    expect(parsed.runtimeMode).toBe("full-access");
+  });
 });
 
 describe("ProviderSendTurnInput", () => {
